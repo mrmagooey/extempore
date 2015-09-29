@@ -2098,7 +2098,10 @@
     (list 
      '(category . "scheme closure")
      (cons 'name (symbol->string name-sym))
-     (cons 'args (xtmdoc-get-args-from-form (get-closure-code (eval name-sym))))
+     (cons 'args 
+           (if (get-closure-code (eval name-sym)) 
+               (xtmdoc-get-args-from-form (get-closure-code (eval name-sym)))
+               '()))
      (list 'type)
      (list 'docstring))))
 
@@ -2111,6 +2114,7 @@
      (list 'type)
      (list 'docstring))))
 
+;; this is what external documentation systems call (e.g. eldoc)
 (define xtmdoc-documentation-function
   (lambda (name)
     (let ((sym (string->symbol name)))
@@ -2154,7 +2158,8 @@
                         "generic closure"
                         "generic type"
                         "type alias"
-                        "builtin")))
+                        "builtin"
+                        "scheme closure")))
       (let ((lpos (cl:position (cdr (assoc-strcmp 'category left)) categories))
             (rpos (cl:position (cdr (assoc-strcmp 'category right)) categories)))
         (if (<> lpos rpos)
@@ -2178,13 +2183,16 @@
     (let* ((closure-alists
             (map (lambda (data) (xtmdoc-closure-handler (string->symbol (car data))))
                  *impc:ti:closure-cache*))
+           (scheme-functions (cl:remove-if-not
+                              (lambda (x) (and (defined? x) (closure? (eval x))))
+                              (map car (oblist))))
            (all-doc-alists
             (append
+             (map (lambda (data) (xtmdoc-scheme-function-handler data)) scheme-functions)
              (map (lambda (data) (xtmdoc-builtin-handler (string->symbol (car data)))) *impc:ti:builtin-cache*)
              (map (lambda (data) (xtmdoc-typealias-handler (string->symbol (car data)))) *impc:ti:typealias-cache*)
              (map (lambda (data) (xtmdoc-generictype-handler (car data))) *impc:ti:generictype-cache*)
              (map (lambda (data) (xtmdoc-genericfunc-handler (car data))) *impc:ti:genericfunc-cache*)
-             
              (map (lambda (data) (xtmdoc-namedtype-handler (string->symbol (car data)))) *impc:ti:namedtype-cache*)
              closure-alists
              (map (lambda (data) (xtmdoc-polytype-handler (string->symbol (car data)))) *impc:ti:polytype-cache*)
@@ -2198,7 +2206,7 @@
                   (map (lambda (x)
                          (xtmdoc-nativefunc-handler (string->symbol (car x))))
                        *impc:ti:nativefunc-cache*))
-                 '()))))      
+                 '()))))
       ;; filter out the things which shouldn't make it to the exported docs
       (cl:remove-if
        (lambda (doc-alist)
@@ -2217,6 +2225,18 @@
           (type (cdr (assoc-strcmp 'type xtmdoc-alist))))
       ;; arg names and types
       (cond
+       ((string=? category "scheme closure")
+        (if (and (list? args) (> (length args) 0))
+            (display
+             (string-append 
+              "["
+              (string-join (map (lambda (arg)
+                                  (string-append "[\"" (symbol->string arg) "\", \"" "" "\"]"))
+                                args)
+                           ",")
+              "]")
+             file-port)
+            (display "null" file-port)))
        ((member category '("closure" "generic closure"))
         (display
          (string-append
